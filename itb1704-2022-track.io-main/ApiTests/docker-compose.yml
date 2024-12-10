@@ -1,0 +1,47 @@
+version: "3.8"
+services:
+  postgres:
+    image: postgres:14.2-alpine
+    container_name: trackdb
+    environment:
+      - POSTGRES_PASSWORD=1234
+    networks:
+      - pg_net
+  back_end:
+    image: ${DOCKER_REGISTRY}/back:${CI_COMMIT_SHA}
+    container_name: back_end
+    depends_on:
+      - postgres
+    networks:
+      - pg_net
+      - api_net
+    links:
+      - "postgres:db"
+    volumes:
+      - ./startup:/etc/startup
+    entrypoint:
+      [
+        "/etc/startup/wait-for",
+        "-t",
+        "30",
+        "db:5432",
+        "--",
+        "dotnet",
+        "/app/itb1704-2022+track.io.dll",
+      ]
+  newman:
+    image: postman/newman:alpine
+    entrypoint:
+      ["/etc/startup/wait-for", "-t", "30", "back_end:80", "--", "newman"]
+    container_name: newman
+    depends_on:
+      - postgres
+      - back_end
+    network_mode: "service:back_end"
+    volumes:
+      - ./startup:/etc/startup
+      - ./newman/:/etc/newman/
+    command: run /etc/newman/Track.IO.postman_collection.json -e workspace.postman_globals.json -e Track.IO.postman_environment.json
+networks:
+  pg_net:
+  api_net:
